@@ -77,7 +77,7 @@ label{font-size:14px;color:var(--mu);display:block}
 <section id="s-lab">
 <h2>Laboratorio ANR digitale</h2>
 <div class="warn">Una cancellazione digitale su copie dello stesso segnale non dimostra una cancellazione acustica nella stanza. I valori qui sono simulati.</div>
-<div class="r"><button id="luse">Usa ultima registrazione</button><label style="flex:1 1 130px">Importa audio<input id="lfile" type="file" accept="audio/*"></label></div>
+<div class="r"><button id="luse">Usa ultima registrazione</button><button id="lpick">Importa file audio</button><input id="lfile" type="file" accept="audio/*,.wav,.mp3,.m4a,.aac,.caf" hidden></div>
 <p class="msg" id="lsrc">Nessun campione caricato.</p>
 <div class="r"><label style="display:flex;gap:8px;align-items:center"><input id="inv" type="checkbox" checked>Inverti il segno</label></div>
 <label for="gain">Guadagno: <b id="gv">1.00</b></label><input id="gain" type="range" min="0" max="2" step="0.01" value="1">
@@ -221,7 +221,12 @@ const a=psd(lab.x),b=psd(o.r);if(a&&b){const h=sr/4096,pa=[],pb=[];for(let k=1;k
 const rx=rmsOf(lab.x),rr=rmsOf(o.r);$('#l-x').textContent=f1(dB(rx))+' dBFS';$('#l-r').textContent=rr===0?'zero':f1(dB(rr))+' dBFS';$('#l-c').textContent=rr===0?'residuo esattamente zero (solo digitale)':f1(dB(rr/(rx||1e-9)))+' dB (solo digitale)';}
 ['#inv','#gain','#dly'].forEach(i=>$(i).oninput=runLab);
 $('#luse').onclick=()=>{if(!clip){say('#lmsg','Nessuna registrazione disponibile: registra nell’Analizzatore o importa un file.','er');return;}lab=clip;$('#lsrc').textContent='Sorgente: '+clip.name+', '+f1(clip.x.length/clip.sr)+' s a '+clip.sr+' Hz.';say('#lmsg','');runLab();};
-$('#lfile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{await ensureCtx();const b=await ctx.decodeAudioData(await f.arrayBuffer());clip={x:new Float32Array(b.getChannelData(0)),sr:b.sampleRate,name:f.name};$('#luse').click();$('#pbtn').disabled=false;}catch(err){say('#lmsg','Impossibile decodificare il file: '+err.message,'er');}};
+function decodeAudio(ab){const OC=window.OfflineAudioContext||window.webkitOfflineAudioContext;if(!OC)throw new Error('decodifica audio non supportata');const oc=new OC(1,1,44100);return new Promise((res,rej)=>{const p=oc.decodeAudioData(ab,res,rej);if(p&&p.then)p.then(res,rej);});}
+$('#lpick').onclick=()=>$('#lfile').click();
+$('#lfile').onchange=async e=>{const f=e.target.files[0];if(!f)return;say('#lmsg','Caricamento di «'+f.name+'»…','wn');
+try{const b=await decodeAudio(await f.arrayBuffer());clip={x:new Float32Array(b.getChannelData(0)),sr:b.sampleRate,name:f.name};$('#luse').click();$('#pbtn').disabled=false;say('#lmsg','File caricato: '+f.name+', '+f1(clip.x.length/clip.sr)+' s.','ok');}
+catch(err){say('#lmsg','Impossibile caricare il file ('+((err&&err.message)||'formato non supportato')+'). Prova con WAV, MP3 o M4A.','er');}
+e.target.value='';};
 $$('[data-p]').forEach(b=>b.onclick=()=>{if(!lab){say('#lmsg','Carica prima un campione.','er');return;}const o=labCalc();play(b.dataset.p==='x'?lab.x:o[b.dataset.p],lab.sr,0.2);});
 $('#lstop').onclick=stopPlay;
 function wav(x,sr){const b=new ArrayBuffer(44+x.length*2),v=new DataView(b),W=(o,s)=>[...s].forEach((c,i)=>v.setUint8(o+i,c.charCodeAt(0)));W(0,'RIFF');v.setUint32(4,36+x.length*2,true);W(8,'WAVEfmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,sr,true);v.setUint32(28,sr*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);W(36,'data');v.setUint32(40,x.length*2,true);for(let i=0;i<x.length;i++)v.setInt16(44+i*2,Math.max(-1,Math.min(1,x[i]))*32767,true);return new Blob([b],{type:'audio/wav'});}
