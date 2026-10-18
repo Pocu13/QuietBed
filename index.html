@@ -33,7 +33,7 @@ label{font-size:14px;color:var(--mu);display:block}
 </style>
 </head>
 <body>
-<header><h1>QuietBed ANR Lab</h1><span class="r" style="margin:0;flex:none"><span id="mode" class="badge ana">ANALISI</span><button id="th" style="min-height:36px;padding:0 10px" aria-label="Cambia tema">Tema</button></span></header>
+<header><h1>QuietBed ANR Lab</h1><span style="display:flex;gap:8px;align-items:center"><span id="mode" class="badge ana">ANALISI</span><button id="th" style="min-height:36px;padding:0 10px;font-size:14px" aria-label="Cambia tema">Tema</button></span></header>
 <main>
 
 <section id="s-home" class="on">
@@ -193,7 +193,7 @@ chart($('#aw'),[{c:css('--ac'),p:wave(sr)}],{x0:0,x1:1024/sr*1000,y0:-1,y1:1,ys:
 const sp=[];for(let k=1;k<fd.length&&k*hz<=20000;k++)sp.push([k*hz,Math.max(-120,fd[k])]);
 chart($('#asp'),[{c:css('--ac'),p:sp}],{logx:1,x0:20,x1:Math.min(20000,sr/2),y0:-120,y1:0,t:'Spettro dB rel. / Hz'});}
 else if(scr==='home')chart($('#cw'),[{c:css('--ac'),p:wave(sr)}],{x0:0,x1:1024/sr*1000,y0:-1,y1:1,ys:0.5,t:'Ampiezza (fs) / ms'});
-if(t-lastH>100){lastH=t;hist.push(r);if(hist.length>600)hist.shift();if(scr==='ana')chart($('#ahi'),[{c:css('--wn'),p:hist.map((v,i)=>[(i-hist.length)/10,Math.max(-100,v)])}],{x0:-60,x1:0,y0:-100,y1:0,t:'RMS dBFS / s'});}
+if(t-lastH>100){lastH=t;if(p>0)hist.push(r);if(hist.length>600)hist.shift();if(scr==='ana')chart($('#ahi'),[{c:css('--wn'),p:hist.map((v,i)=>[(i-hist.length)/10,Math.max(-100,v)])}],{x0:-60,x1:0,y0:-100,y1:0,t:'RMS dBFS / s'});}
 requestAnimationFrame(loop);}
 const wave=sr=>{const a=[];for(let i=0;i<1024;i++)a.push([i/sr*1000,td[i]]);return a;};
 
@@ -218,7 +218,7 @@ function labCalc(){if(!lab)return null;const inv=$('#inv').checked,g=+$('#gain')
 function runLab(){$('#gv').textContent=(+$('#gain').value).toFixed(2);$('#dv').textContent=(+$('#dly').value).toFixed(2)+' ms';if(!lab)return;const o=labCalc(),sr=lab.sr,T=lab.x.length/sr;
 const opt={x0:0,x1:T,y0:-1,y1:1,ys:0.5};chart($('#l1'),[{c:css('--ac'),p:dec(lab.x,sr)}],{...opt,t:'Originale (fs) / s'});chart($('#l2'),[{c:css('--wn'),p:dec(o.y,sr)}],{...opt,t:'Trasformato'});chart($('#l3'),[{c:css('--ok'),p:dec(o.r,sr)}],{...opt,t:'Risultante'});
 const a=psd(lab.x),b=psd(o.r);if(a&&b){const h=sr/4096,pa=[],pb=[];for(let k=1;k<a.length;k++){if(k*h>20000)break;pa.push([k*h,a[k]]);pb.push([k*h,b[k]]);}const[y0,y1]=rng([pa,pb]);chart($('#lsp'),[{c:css('--ac'),p:pa},{c:css('--ok'),p:pb}],{logx:1,x0:20,x1:Math.min(20000,sr/2),y0,y1,t:'Spettro prima (blu) e dopo (verde), dB relativi / Hz'});}
-const rx=rmsOf(lab.x),rr=rmsOf(o.r);$('#l-x').textContent=f1(dB(rx))+' dBFS';$('#l-r').textContent=f1(dB(rr))+' dBFS';$('#l-c').textContent=f1(dB(rr/(rx||1e-9)))+' dB (solo digitale)';}
+const rx=rmsOf(lab.x),rr=rmsOf(o.r);$('#l-x').textContent=f1(dB(rx))+' dBFS';$('#l-r').textContent=rr===0?'zero':f1(dB(rr))+' dBFS';$('#l-c').textContent=rr===0?'residuo esattamente zero (solo digitale)':f1(dB(rr/(rx||1e-9)))+' dB (solo digitale)';}
 ['#inv','#gain','#dly'].forEach(i=>$(i).oninput=runLab);
 $('#luse').onclick=()=>{if(!clip){say('#lmsg','Nessuna registrazione disponibile: registra nell’Analizzatore o importa un file.','er');return;}lab=clip;$('#lsrc').textContent='Sorgente: '+clip.name+', '+f1(clip.x.length/clip.sr)+' s a '+clip.sr+' Hz.';say('#lmsg','');runLab();};
 $('#lfile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{await ensureCtx();const b=await ctx.decodeAudioData(await f.arrayBuffer());clip={x:new Float32Array(b.getChannelData(0)),sr:b.sampleRate,name:f.name};$('#luse').click();$('#pbtn').disabled=false;}catch(err){say('#lmsg','Impossibile decodificare il file: '+err.message,'er');}};
