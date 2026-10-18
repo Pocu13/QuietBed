@@ -104,6 +104,16 @@ label{font-size:14px;color:var(--mu);display:block}
 <button class="big" id="tstart">Avvia emissione (30 s al massimo)</button>
 <button class="big stop" id="tstop" style="min-height:64px">STOP</button>
 <p class="msg" id="tmsg">Audio fermo.</p>
+<h2>Cancellazione di un tono (sperimentale)</h2>
+<div class="warn">Prova con due telefoni: l’altro telefono riproduce un tono puro (file dedicato) a volume basso. Questo iPhone lo misura con il microfono e prova ad annullarlo con la cassa, solo vicino al microfono. Non funziona sul traffico: serve un tono stazionario. Parte solo quando premi il pulsante, con volume limitato e arresto automatico se diventa instabile. Non è FxLMS.</div>
+<div class="r"><div><label for="anc-f">Frequenza del tono (Hz)</label><input id="anc-f" type="number" value="400" min="50" max="1000"></div></div>
+<label for="anc-vol">Volume massimo di uscita: <b id="anc-vv">10%</b> (limite 25%)</label><input id="anc-vol" type="range" min="2" max="25" value="10">
+<button class="big" id="anc-go">Avvia taratura e cancellazione</button>
+<button id="anc-tg" style="width:100%" disabled>Spegni la cancellazione (per confronto)</button>
+<div class="kv"><span>Stato</span><b id="anc-st">fermo</b><span>Tono senza cancellazione</span><b id="anc-b">n/d</b><span>Tono ora</span><b id="anc-n">n/d</b><span>Variazione misurata (negativa = tono più basso)</span><b id="anc-r">n/d</b><span>Percorso cassa → microfono</span><b id="anc-h">n/d</b></div>
+<canvas id="anc-ch"></canvas>
+<p class="msg">Grafico: livello del tono rilevato dal microfono, in dBFS, nel tempo (s). Misura relativa nel punto del microfono: non prova una riduzione altrove nella stanza.</p>
+<p class="msg" id="anc-msg"></p>
 </section>
 
 <section id="s-rep">
@@ -158,9 +168,9 @@ const rng=ss=>{let m=-200;ss.forEach(s=>s.forEach(q=>{if(q[1]>m)m=q[1]}));const 
 
 /* ---------- Motore audio e microfono ---------- */
 async function ensureCtx(){if(!ctx){const AC=window.AudioContext||window.webkitAudioContext;if(!AC)throw new Error('Web Audio API non supportata da questo browser.');ctx=new AC();
-ctx.onstatechange=()=>{if(ctx.state!=='running'){stopTone();stopPlay();if(ctx.state==='closed'){if(live)lost('Il motore audio è stato chiuso. Tocca di nuovo «Attiva microfono».');}else if(live){say('.mic-msg','Motore audio in stato «'+ctx.state+'», provo a riprendere…','wn');ctx.resume().catch(()=>{});}}else if(live)say('.mic-msg','Microfono attivo. Elaborazione locale, nulla viene caricato.','ok');refreshInfo();};}
+ctx.onstatechange=()=>{if(ctx.state!=='running'){stopTone();stopPlay();ancStop('Cancellazione fermata: stato audio «'+ctx.state+'».',true);if(ctx.state==='closed'){if(live)lost('Il motore audio è stato chiuso. Tocca di nuovo «Attiva microfono».');}else if(live){say('.mic-msg','Motore audio in stato «'+ctx.state+'», provo a riprendere…','wn');ctx.resume().catch(()=>{});}}else if(live)say('.mic-msg','Microfono attivo. Elaborazione locale, nulla viene caricato.','ok');refreshInfo();};}
 if(ctx.state!=='running')await Promise.race([ctx.resume().catch(()=>{}),new Promise(r=>setTimeout(r,1500))]);}
-function lost(msg){live=false;rec=null;if(meas){meas=null;$('#afft').disabled=false;say('#mprog','Misura annullata: '+msg,'er');}
+function lost(msg){ancStop('Cancellazione fermata: microfono non più attivo.',true);live=false;rec=null;if(meas){meas=null;$('#afft').disabled=false;say('#mprog','Misura annullata: '+msg,'er');}
 if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;say('.mic-msg',msg,'er');$$('.micbtn').forEach(b=>b.textContent='Attiva microfono');$('#rbtn').textContent='Registra (max 60 s)';}
 function setupBuf(){an.fftSize=+$('#afft').value;an.smoothingTimeConstant=+$('#aavg').value;td=new Float32Array(an.fftSize);fd=new Float32Array(an.frequencyBinCount);
 const sr=ctx.sampleRate,N=an.fftSize;$('#fftinfo').textContent='Risoluzione '+f1(sr/N,2)+' Hz per bin, finestra Blackman di '+f1(N/sr*1000,0)+' ms: FFT più grande = più dettaglio in frequenza ma risposta più lenta.';}
@@ -171,7 +181,7 @@ try{if(navigator.audioSession)navigator.audioSession.type='auto';}catch(e){}try{
 catch(e){say('.mic-msg',e.name==='NotAllowedError'?'Permesso negato. Abilitalo in Impostazioni, Safari, Microfono, poi ricarica la pagina.':'Errore microfono: '+e.message,'er');return;}
 try{await ctx.resume();}catch(e){}const src=ctx.createMediaStreamSource(stream);an=ctx.createAnalyser();an.minDecibels=-120;an.maxDecibels=0;setupBuf();src.connect(an);
 const pr=ctx.createScriptProcessor(4096,1,1),z=ctx.createGain();z.gain.value=0;src.connect(pr);pr.connect(z);z.connect(ctx.destination);
-pr.onaudioprocess=e=>{cbN++;const d=e.inputBuffer.getChannelData(0);if(rec){rec.push(new Float32Array(d));rec.n+=d.length;if(rec.n>=ctx.sampleRate*60)stopRec();}
+zg=z;pr.onaudioprocess=e=>{cbN++;const d=e.inputBuffer.getChannelData(0),o=e.outputBuffer.getChannelData(0);if(anc.on)ancBlock(d,o);else o.fill(0);if(rec){rec.push(new Float32Array(d));rec.n+=d.length;if(rec.n>=ctx.sampleRate*60)stopRec();}
 if(meas){for(let i=0;i<d.length;i++){const v=d[i],a=Math.abs(v);meas.ss+=v*v;meas.cs+=v*v;if(a>meas.peak)meas.peak=a;}meas.n+=d.length;meas.cn+=d.length;if(meas.cn>=ctx.sampleRate){meas.sec.push(Math.sqrt(meas.cs/meas.cn));meas.cs=meas.cn=0;}}};
 const tr=stream.getAudioTracks()[0];tr.onended=()=>lost('Flusso del microfono interrotto o perso.');
 const st=tr.getSettings?tr.getSettings():{};$('#a-set').textContent=JSON.stringify(st,null,1)+'\n(valori riportati dal browser; quelli mancanti non sono esposti)';
@@ -251,12 +261,36 @@ let dev='non disponibile';try{const d=(await navigator.mediaDevices.enumerateDev
 el.innerHTML='';rows.forEach(r=>{const a=document.createElement('span'),b=document.createElement('b');a.textContent=r[0];b.textContent=N(r[1]);el.append(a,b);});}
 $('#tinfo').onclick=async()=>{try{await ensureCtx();}catch(e){say('#tmsg',e.message,'er');}refreshInfo();};
 $('#tf').oninput=()=>$('#tfv').textContent=$('#tf').value+' Hz';$('#vol').oninput=()=>$('#vv').textContent=$('#vol').value+'%';
-async function startTone(){if(!live)unlock();try{await ensureCtx();}catch(e){say('#tmsg',e.message,'er');return;}stopTone();const t=ctx.currentTime,vol=Math.min(+$('#vol').value/100,0.3),g=ctx.createGain();g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(vol,t+0.5);let s,fl=null;
+async function startTone(){ancStop();if(!live)unlock();try{await ensureCtx();}catch(e){say('#tmsg',e.message,'er');return;}stopTone();const t=ctx.currentTime,vol=Math.min(+$('#vol').value/100,0.3),g=ctx.createGain();g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(vol,t+0.5);let s,fl=null;
 if($('#ttype').value==='sine'){s=ctx.createOscillator();s.frequency.value=+$('#tf').value;}else{const b=ctx.createBuffer(1,ctx.sampleRate*2,ctx.sampleRate),d=b.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;s=ctx.createBufferSource();s.buffer=b;s.loop=true;fl=ctx.createBiquadFilter();fl.type='lowpass';fl.frequency.value=400;}
 if(fl){s.connect(fl);fl.connect(g);}else s.connect(g);g.connect(ctx.destination);s.start();tn={s,g};toneOn=true;if(meas)meas.tone=true;tt=setTimeout(stopTone,30000);setMode();say('#tmsg','Emissione in corso al '+f1(vol*100,0)+'%. Si ferma da sola dopo 30 s. Nessuna cancellazione attiva.','wn');}
 function stopTone(){if(tn&&ctx){const t=ctx.currentTime;tn.g.gain.cancelScheduledValues(t);tn.g.gain.setValueAtTime(0,t);try{tn.s.stop(t+0.02);}catch(e){}const g=tn.g;setTimeout(()=>{try{g.disconnect();}catch(e){}},100);}tn=null;clearTimeout(tt);if(toneOn){toneOn=false;setMode();say('#tmsg','Audio fermo.');}}
-$('#tstart').onclick=startTone;$('#tstop').onclick=()=>{stopTone();stopPlay();};
+$('#tstart').onclick=startTone;$('#tstop').onclick=()=>{stopTone();stopPlay();ancStop();};
 document.addEventListener('visibilitychange',()=>{if(document.hidden){stopTone();stopPlay();if(live)lost('Pagina in background: acquisizione interrotta. Riattiva il microfono.');}});
+
+/* ---------- Cancellazione di un tono (sperimentale, un solo tono) ---------- */
+let anc={on:false},zg;
+function ancInit(f,sr,amax){return{on:true,f,w:2*Math.PI*f/sr,ph:0,I:0,Q:0,k:0,N:Math.round(sr*0.5),st:'b0',u:[0,0],d0:null,H:null,amax,bad:0,mute:false,hist:[]};}
+function ancBlock(d,o){const a=anc;let mu=a.mute?[0,0]:a.u;for(let i=0;i<d.length;i++){const c=Math.cos(a.ph),s=Math.sin(a.ph);a.I+=d[i]*c;a.Q-=d[i]*s;o[i]=mu[0]*c-mu[1]*s;a.ph+=a.w;if(a.ph>6.283185307179586)a.ph-=6.283185307179586;
+if(++a.k>=a.N){ancStep(2*a.I/a.N,2*a.Q/a.N);a.I=a.Q=0;a.k=0;if(!anc.on){o.fill(0,i+1);return;}mu=a.mute?[0,0]:a.u;}}}
+function ancStep(cr,ci){const a=anc,m=Math.hypot(cr,ci),lv=dB(m/Math.SQRT2);
+if(a.st==='b0'){a.st='b1';return;}
+if(a.st==='b1'){a.d0=[cr,ci];if(m<0.002){ancStop('Non rilevo il tono a '+a.f+' Hz. Avvia il file sull’altro telefono, a volume medio e vicino a questo iPhone, e controlla la frequenza.',true);return;}
+a.P=Math.min(0.08,a.amax/2);a.u=[a.P,0];a.st='p0';ancUi(lv,'Stimo il percorso cassa → microfono…');return;}
+if(a.st==='p0'){a.st='p1';return;}
+if(a.st==='p1'){a.H=[(cr-a.d0[0])/a.P,(ci-a.d0[1])/a.P];if(Math.hypot(a.H[0],a.H[1])<0.03){ancStop('Il microfono non capta la cassa (percorso troppo debole). Alza il volume massimo o avvicina i telefoni.',true);return;}a.u=[0,0];a.st='run';ancUi(lv,'Cancellazione attiva');return;}
+if(!a.mute){if(m>3*Math.hypot(a.d0[0],a.d0[1])+1e-4){if(++a.bad>=3){ancStop('Instabilità rilevata: il tono è aumentato. Cancellazione fermata. Cause possibili: telefoni spostati, tono dell’altro telefono cambiato o percorso cassa → microfono troppo debole.',true);return;}}else a.bad=0;
+const h=a.H,den=h[0]*h[0]+h[1]*h[1],qr=(cr*h[0]+ci*h[1])/den,qi=(ci*h[0]-cr*h[1])/den;let ur=a.u[0]-0.5*qr,ui=a.u[1]-0.5*qi;const um=Math.hypot(ur,ui);if(um>a.amax){ur*=a.amax/um;ui*=a.amax/um;}a.u=[ur,ui];}
+ancUi(lv);}
+function ancUi(lv,msg){const a=anc;a.hist.push(lv);if(msg)$('#anc-st').textContent=msg;const b=a.d0?dB(Math.hypot(a.d0[0],a.d0[1])/Math.SQRT2):null;
+if(b!==null)$('#anc-b').textContent=f1(b)+' dBFS';$('#anc-n').textContent=f1(lv)+' dBFS';
+if(a.st==='run'){$('#anc-r').textContent=f1(lv-b)+' dB'+(a.mute?' (cancellazione spenta)':'');$('#anc-h').textContent=f1(Math.hypot(a.H[0],a.H[1]),2)+' a '+f1(Math.atan2(a.H[1],a.H[0])*180/Math.PI,0)+'°';}
+const lo=Math.min(...a.hist),hi=Math.max(...a.hist);chart($('#anc-ch'),[{c:css('--ac'),p:a.hist.map((v,i)=>[i*0.5,v])}],{x0:0,x1:Math.max(30,a.hist.length*0.5),y0:Math.floor((lo-5)/10)*10,y1:Math.ceil((hi+5)/10)*10,ys:10,t:'Tono a '+a.f+' Hz, dBFS / s'});}
+function ancStop(msg,err){if(!anc.on)return;anc={on:false};if(zg)zg.gain.value=0;toneOn=false;setMode();$('#anc-go').textContent='Avvia taratura e cancellazione';$('#anc-tg').disabled=true;$('#anc-tg').textContent='Spegni la cancellazione (per confronto)';$('#anc-st').textContent='fermo';say('#anc-msg',msg||'Cancellazione fermata.',err?'er':'');}
+$('#anc-vol').oninput=()=>$('#anc-vv').textContent=$('#anc-vol').value+'%';
+$('#anc-go').onclick=async()=>{if(anc.on){ancStop();return;}if(!live)await startMic();if(!live)return;const f=+$('#anc-f').value;if(!(f>=50&&f<=1000)){say('#anc-msg','Frequenza non valida (50–1000 Hz).','er');return;}
+stopTone();stopPlay();anc=ancInit(f,ctx.sampleRate,Math.min(+$('#anc-vol').value/100,0.25));zg.gain.value=1;toneOn=true;if(meas)meas.tone=true;setMode();$('#anc-go').textContent='STOP cancellazione';$('#anc-tg').disabled=false;$('#anc-st').textContent='Misuro il tono senza cancellazione…';$('#anc-r').textContent='n/d';say('#anc-msg','Sperimentale: vale solo vicino al microfono di questo iPhone. Premi STOP per fermare.','wn');};
+$('#anc-tg').onclick=()=>{if(!anc.on||anc.st!=='run')return;anc.mute=!anc.mute;$('#anc-tg').textContent=anc.mute?'Riaccendi la cancellazione':'Spegni la cancellazione (per confronto)';};
 
 /* ---------- Report, misure guidate, confronto ---------- */
 function persist(){try{if($('#cons').checked)localStorage.setItem('qb',JSON.stringify(sessions));}catch(e){}renderRep();}
