@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="it" data-t="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>QuietBed ANR Lab</title>
+<style>
+:root{--bg:#161a2a;--sf:#222844;--tx:#e9ebf5;--mu:#98a0c2;--ac:#7db7ff;--wn:#ffb36b;--ok:#6fd6a0;--er:#ff7b84;--ln:#343b60;color-scheme:dark}
+[data-t=light]{--bg:#f2f3f8;--sf:#fff;--tx:#1a1e33;--mu:#5a6285;--ac:#1d62c9;--wn:#b25a00;--ok:#16794a;--er:#b3262f;--ln:#d3d6e6;color-scheme:light}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.45 system-ui,-apple-system,sans-serif}
+header{position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:calc(8px + env(safe-area-inset-top)) 14px 8px;background:var(--bg);border-bottom:1px solid var(--ln)}
+h1{font-size:17px;margin:0}h2{font-size:20px;margin:8px 0}
+main{padding-bottom:90px}
+section{display:none;padding:12px 14px;max-width:640px;margin:auto}section.on{display:block}
+button{font:inherit;min-height:48px;border-radius:12px;border:1px solid var(--ln);background:var(--sf);color:var(--tx);padding:0 14px}
+.big{width:100%;margin:6px 0;background:var(--ac);color:#08101f;font-weight:600}.stop{background:var(--er);color:#190508;border-color:var(--er)}
+input,select{font:inherit;min-height:44px;border-radius:10px;border:1px solid var(--ln);background:var(--sf);color:var(--tx);padding:0 8px;max-width:100%}
+input[type=range]{width:100%;padding:0}input[type=checkbox]{min-height:24px;width:24px}
+.r{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}.r>*{flex:1 1 130px}
+canvas{width:100%;height:130px;background:var(--sf);border-radius:10px;display:block;margin:6px 0}
+.kv{display:grid;grid-template-columns:1fr auto;gap:2px 10px;background:var(--sf);padding:10px;border-radius:10px;margin:8px 0;font-size:15px}.kv b{text-align:right;overflow-wrap:anywhere}
+.msg{font-size:14px;color:var(--mu);margin:6px 0}.msg.er{color:var(--er)}.msg.wn{color:var(--wn)}.msg.ok{color:var(--ok)}
+.warn{border-left:4px solid var(--wn);padding:6px 10px;background:var(--sf);font-size:14px;margin:8px 0}
+.badge{font-size:12px;font-weight:700;padding:3px 9px;border-radius:99px;border:1px solid currentColor;white-space:nowrap}
+.ana,.est{color:var(--ac)}.sim{color:var(--wn)}.diag,.mis{color:var(--ok)}.real{color:var(--er)}
+nav{position:fixed;bottom:0;left:0;right:0;display:grid;grid-template-columns:repeat(5,1fr);background:var(--bg);border-top:1px solid var(--ln);padding-bottom:env(safe-area-inset-bottom)}
+nav button{border:0;border-radius:0;background:none;font-size:12px;color:var(--mu);min-height:54px;padding:0 2px}
+nav button[aria-current=true]{color:var(--ac);font-weight:700;box-shadow:inset 0 3px var(--ac)}
+details{background:var(--sf);border-radius:10px;padding:8px 12px;margin:8px 0;font-size:14px}summary{min-height:36px;font-weight:600;font-size:16px}
+.item{background:var(--sf);border-radius:10px;padding:8px 10px;margin:6px 0;font-size:14px}
+label{font-size:14px;color:var(--mu);display:block}
+</style>
+</head>
+<body>
+<header><h1>QuietBed ANR Lab</h1><span class="r" style="margin:0;flex:none"><span id="mode" class="badge ana">ANALISI</span><button id="th" style="min-height:36px;padding:0 10px" aria-label="Cambia tema">Tema</button></span></header>
+<main>
+
+<section id="s-home" class="on">
+<h2>Dashboard</h2>
+<p class="msg mic-msg">Microfono non attivo.</p>
+<button class="big micbtn">Attiva microfono</button>
+<div class="kv"><span>RMS digitale</span><b id="d-rms">n/d</b><span>Picco</span><b id="d-pk">n/d</b><span>Segnale</span><b id="d-st">n/d</b></div>
+<canvas id="cw"></canvas>
+<p class="msg">Forma d’onda in ampiezza digitale (fondo scala = 1). I livelli sono in dBFS: misure digitali relative, non dB SPL calibrati.</p>
+<div class="warn">Questa app non sostituisce insonorizzazione, ventilazione o interventi acustici professionali. Nessuna schermata dichiara una cancellazione reale senza misure sperimentali.</div>
+<details><summary>Protocollo prima/dopo</summary>
+<ol><li>Metti l’iPhone vicino al cuscino, microfono verso la finestra, sempre nella stessa posizione.</li>
+<li>Apri «Report», compila posizione, finestra e cassa. Prima misura con cassa spenta (riferimento), 60 s o più.</li>
+<li>Ripeti con le stesse condizioni (stessa durata, stessa finestra) dopo l’intervento.</li>
+<li>Confronta le due sessioni: l’app avvisa se durata o livelli ambientali sono troppo diversi.</li>
+<li>Se la cassa è accesa, il microfono capta anche la cassa: il risultato è contaminato.</li></ol></details>
+<details><summary>Limiti dell’hardware attuale</summary>
+<p>Il microfono dell’iPhone è unico: non può essere insieme riferimento del rumore esterno e sensore d’errore al letto. Il percorso Bluetooth aggiunge decine o centinaia di ms, troppo per cancellare il traffico in tempo reale. Safari può applicare elaborazioni al microfono e sospende l’audio in background. Senza calibrazione i livelli non sono dB SPL. Per un vero ANR servono almeno un microfono di riferimento esterno, un microfono d’errore al cuscino, un altoparlante vicino e un’uscita a bassa latenza (cablata).</p></details>
+<details><summary>Requisiti per FxLMS (non attivo)</summary>
+<p>1) Riferimento correlato al rumore, rilevato prima che arrivi al letto. 2) Segnale d’errore misurato nel punto d’ascolto. 3) Modello del percorso secondario (altoparlante → microfono d’errore), da identificare con un test. 4) Compensazione del ritardo: l’anti-rumore deve arrivare entro pochi ms. 5) Passo di adattamento e limiti di stabilità, con uscita limitata. Con l’hardware attuale questi requisiti non sono soddisfatti, quindi FxLMS non è implementato né attivabile. Il laboratorio offline serve solo a studiare fase, guadagno e ritardo.</p></details>
+</section>
+
+<section id="s-ana">
+<h2>Analizzatore acustico</h2>
+<p class="msg mic-msg">Microfono non attivo.</p>
+<button class="big micbtn">Attiva microfono</button>
+<div class="r"><div><label for="afft">Dimensione FFT</label><select id="afft"><option>2048</option><option selected>4096</option><option>8192</option></select></div>
+<div><label for="aavg">Media temporale</label><select id="aavg"><option value="0">Nessuna</option><option value="0.5">Breve</option><option value="0.8" selected>Media</option><option value="0.95">Lunga</option></select></div></div>
+<p class="msg" id="fftinfo">Avvia il microfono per vedere risoluzione e finestra.</p>
+<canvas id="aw"></canvas>
+<canvas id="asp"></canvas>
+<canvas id="ahi"></canvas>
+<p class="msg">Spettro: dB relativi al fondo scala, non pressione sonora. Storico: RMS in dBFS negli ultimi 60 s.</p>
+<div class="r"><div><label for="lo">Banda da (Hz)</label><input id="lo" type="number" value="20" min="1"></div><div><label for="hi">a (Hz)</label><input id="hi" type="number" value="200" min="2"></div></div>
+<div class="kv"><span>RMS digitale</span><b id="a-rms">n/d</b><span>Picco</span><b id="a-pk">n/d</b><span>Energia relativa nella banda (stima)</span><b id="a-bd">n/d</b><span>Energia sotto 200 Hz (stima)</span><b id="a-lf">n/d</b><span>Stato</span><b id="a-st">n/d</b><span>Frequenza di campionamento</span><b id="a-sr">n/d</b></div>
+<details><summary>Caratteristiche del flusso microfono</summary><pre id="a-set" style="white-space:pre-wrap;font-size:12px">n/d</pre></details>
+<div class="r"><button id="rbtn">Registra (max 60 s)</button><button id="pbtn" disabled>Riproduci</button><button id="xbtn" class="stop" disabled>Stop</button></div>
+<p class="msg" id="rmsg">Nessuna registrazione. La registrazione parte solo quando premi «Registra» e resta sul dispositivo.</p>
+</section>
+
+<section id="s-lab">
+<h2>Laboratorio ANR digitale</h2>
+<div class="warn">Una cancellazione digitale su copie dello stesso segnale non dimostra una cancellazione acustica nella stanza. I valori qui sono simulati.</div>
+<div class="r"><button id="luse">Usa ultima registrazione</button><label style="flex:1 1 130px">Importa audio<input id="lfile" type="file" accept="audio/*"></label></div>
+<p class="msg" id="lsrc">Nessun campione caricato.</p>
+<div class="r"><label style="display:flex;gap:8px;align-items:center"><input id="inv" type="checkbox" checked>Inverti il segno</label></div>
+<label for="gain">Guadagno: <b id="gv">1.00</b></label><input id="gain" type="range" min="0" max="2" step="0.01" value="1">
+<label for="dly">Ritardo: <b id="dv">0.00 ms</b></label><input id="dly" type="range" min="0" max="20" step="0.01" value="0">
+<canvas id="l1"></canvas><canvas id="l2"></canvas><canvas id="l3"></canvas>
+<p class="msg">Blu: originale. Arancio: trasformato (invertito, con guadagno e ritardo). Verde: risultante = originale + trasformato. Tempo in s, ampiezza digitale.</p>
+<canvas id="lsp"></canvas>
+<div class="kv"><span>RMS originale</span><b id="l-x">n/d</b><span>RMS risultante</span><b id="l-r">n/d</b><span>Cancellazione teorica (simulata)</span><b id="l-c">n/d</b></div>
+<div class="r"><button data-p="x">Ascolta originale</button><button data-p="y">Ascolta trasformato</button><button data-p="r">Ascolta risultante</button></div>
+<div class="r"><button id="lstop" class="stop">Stop audio</button><button id="lwav">Esporta risultante (WAV)</button><button id="lrep">Registra nel report</button></div>
+<div class="r"><button id="ltest">Test matematico dell’inversione</button></div>
+<p class="msg" id="lmsg"></p>
+</section>
+
+<section id="s-test">
+<h2>Test audio reale</h2>
+<div class="warn">Modalità diagnostica. Nessun algoritmo adattivo è attivo: l’app emette solo segnali di prova a volume limitato e non dichiara alcuna cancellazione. Collega la cassa Bluetooth dalle impostazioni audio di iOS (Centro di controllo, icona AirPlay).</div>
+<button class="big" id="tinfo">Aggiorna parametri audio</button>
+<div class="kv" id="info"><span>Motore audio</span><b>non avviato</b></div>
+<p class="msg">baseLatency e outputLatency non misurano l’intero ritardo microfono, elaborazione, trasporto Bluetooth ed emissione acustica. I valori mancanti sono «non disponibile», mai zero. Il solo baseLatency non basta per dire che il sistema è adatto all’ANR in tempo reale.</p>
+<div class="r"><div><label for="ttype">Segnale di prova</label><select id="ttype"><option value="sine">Tono sinusoidale</option><option value="noise">Rumore basso (filtrato a 400 Hz)</option></select></div></div>
+<label for="tf">Frequenza tono: <b id="tfv">100 Hz</b></label><input id="tf" type="range" min="40" max="500" value="100">
+<label for="vol">Volume (max 30%): <b id="vv">5%</b></label><input id="vol" type="range" min="0" max="30" value="5">
+<button class="big" id="tstart">Avvia emissione (30 s al massimo)</button>
+<button class="big stop" id="tstop" style="min-height:64px">STOP</button>
+<p class="msg" id="tmsg">Audio fermo.</p>
+</section>
+
+<section id="s-rep">
+<h2>Report e cronologia</h2>
+<p class="msg">Misura guidata: richiede il microfono attivo (parte da sola se premi «Avvia misura»).</p>
+<div class="r"><div><label for="rpos">Posizione del telefono</label><select id="rpos"><option>Cuscino</option><option>Centro letto</option><option>Piedi del letto</option><option>Altra</option></select></div>
+<div><label for="rwin">Finestra</label><select id="rwin"><option>chiusa</option><option>socchiusa</option><option>aperta</option></select></div></div>
+<div class="r"><div><label for="rspk">Cassa</label><select id="rspk"><option>spenta</option><option>accesa</option></select></div>
+<div><label for="rmode">Modalità</label><select id="rmode"><option>Solo analisi ambiente</option><option>Diagnostica con segnale di prova</option></select></div>
+<div><label for="rdur">Durata</label><select id="rdur"><option value="30">30 s</option><option value="60" selected>60 s</option><option value="120">120 s</option></select></div></div>
+<label for="rnote">Note sul traffico</label><input id="rnote" style="width:100%" placeholder="Es. intenso, motorini, camion">
+<button class="big" id="mstart">Avvia misura</button>
+<p class="msg" id="mprog"></p>
+<h2>Sessioni</h2>
+<div id="list"></div>
+<div class="r"><div><label for="ca">Sessione A (prima)</label><select id="ca"></select></div><div><label for="cb">Sessione B (dopo)</label><select id="cb"></select></div></div>
+<button class="big" id="cmp">Confronta A e B</button>
+<canvas id="csp"></canvas>
+<p class="msg" id="cres"></p>
+<div class="r"><label style="display:flex;gap:8px;align-items:center"><input id="cons" type="checkbox">Salva le sessioni su questo dispositivo (solo numeri e spettri, mai audio)</label></div>
+<button id="clr" class="stop" style="width:100%">Cancella tutti i dati salvati</button>
+</section>
+</main>
+<nav><button data-s="home" aria-current="true">Dashboard</button><button data-s="ana">Analisi</button><button data-s="lab">Laboratorio</button><button data-s="test">Test reale</button><button data-s="rep">Report</button></nav>
+
+<script>
+'use strict';
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const dB=x=>20*Math.log10(Math.max(x,1e-9)),f1=(x,d=1)=>isFinite(x)?x.toFixed(d):'n/d';
+const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const say=(sel,t,c='')=>$$(sel).forEach(e=>{e.textContent=t;e.className='msg '+(sel==='.mic-msg'?'mic-msg ':'')+c});
+let scr='home',ctx,stream,an,td,fd,live=false,rec=null,meas=null,clip=null,lab=null,tn=null,toneOn=false,tt,ps=null,sessions=[];
+
+/* ---------- Interfaccia ---------- */
+function setMode(){const m=toneOn?['TEST REALE','real']:scr==='lab'?['SIMULAZIONE','sim']:scr==='test'?['DIAGNOSTICA','diag']:['ANALISI','ana'];const b=$('#mode');b.textContent=m[0];b.className='badge '+m[1];}
+$$('nav button').forEach(b=>b.onclick=()=>{scr=b.dataset.s;$$('section').forEach(s=>s.classList.toggle('on',s.id==='s-'+scr));$$('nav button').forEach(x=>x.setAttribute('aria-current',x===b));setMode();if(scr==='test')refreshInfo();if(scr==='rep')renderRep();if(scr==='lab')runLab();window.scrollTo(0,0);});
+$('#th').onclick=()=>{const h=document.documentElement;h.dataset.t=h.dataset.t==='dark'?'light':'dark';};
+
+/* ---------- Grafici (Canvas 2D) ---------- */
+function chart(c,series,o){const d=devicePixelRatio||1,w=c.clientWidth,h=c.clientHeight;if(c.width!==Math.round(w*d)){c.width=Math.round(w*d);c.height=Math.round(h*d);}
+const g=c.getContext('2d');g.setTransform(d,0,0,d,0,0);g.clearRect(0,0,w,h);const L=36,B=16,T=12,R=6;
+const X=x=>L+(o.logx?Math.log(x/o.x0)/Math.log(o.x1/o.x0):(x-o.x0)/(o.x1-o.x0))*(w-L-R),Y=y=>T+(1-(y-o.y0)/(o.y1-o.y0))*(h-T-B);
+g.font='10px system-ui';g.lineWidth=1;const mu=css('--mu'),ln=css('--ln');
+const yt=o.yt||[];if(!o.yt){const st=o.ys||20;for(let v=Math.ceil(o.y0/st)*st;v<=o.y1;v+=st)yt.push(v);}
+const xt=o.xt||(o.logx?[50,100,200,500,1000,2000,5000,10000]:[0,1,2,3,4].map(i=>o.x0+(o.x1-o.x0)*i/4));
+yt.forEach(v=>{g.strokeStyle=ln;g.beginPath();g.moveTo(L,Y(v));g.lineTo(w-R,Y(v));g.stroke();g.fillStyle=mu;g.fillText(f1(v,0),2,Y(v)+3);});
+xt.forEach(v=>{if(v<o.x0||v>o.x1)return;g.strokeStyle=ln;g.beginPath();g.moveTo(X(v),T);g.lineTo(X(v),h-B);g.stroke();g.fillStyle=mu;g.fillText(v>=1000?v/1000+'k':f1(v,o.logx?0:2),X(v)-8,h-4);});
+g.fillStyle=mu;g.fillText(o.t||'',L+4,9);
+series.forEach(s=>{g.strokeStyle=s.c;g.lineWidth=1.5;g.beginPath();s.p.forEach((q,i)=>{const x=X(q[0]),y=Math.max(T,Math.min(h-B,Y(q[1])));i?g.lineTo(x,y):g.moveTo(x,y);});g.stroke();});}
+const dec=(a,sr,n=300)=>{const k=Math.max(1,Math.floor(a.length/n)),r=[];for(let i=0;i<a.length;i+=k){let m=0;for(let j=i;j<Math.min(a.length,i+k);j++)if(Math.abs(a[j])>Math.abs(m))m=a[j];r.push([i/sr,m]);}return r;};
+const rng=ss=>{let m=-200;ss.forEach(s=>s.forEach(q=>{if(q[1]>m)m=q[1]}));const y1=Math.ceil(m/10)*10+5;return[y1-80,y1];};
+
+/* ---------- Motore audio e microfono ---------- */
+async function ensureCtx(){if(!ctx){const AC=window.AudioContext||window.webkitAudioContext;if(!AC)throw new Error('Web Audio API non supportata da questo browser.');ctx=new AC();
+ctx.onstatechange=()=>{if(ctx.state!=='running'){stopTone();stopPlay();if(live)lost('Il motore audio è passato allo stato «'+ctx.state+'». Tocca di nuovo «Attiva microfono».');}refreshInfo();};}
+if(ctx.state!=='running')await ctx.resume();}
+function lost(msg){live=false;rec=null;if(meas){meas=null;$('#afft').disabled=false;say('#mprog','Misura annullata: '+msg,'er');}
+if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;say('.mic-msg',msg,'er');$$('.micbtn').forEach(b=>b.textContent='Attiva microfono');$('#rbtn').textContent='Registra (max 60 s)';}
+function setupBuf(){an.fftSize=+$('#afft').value;an.smoothingTimeConstant=+$('#aavg').value;td=new Float32Array(an.fftSize);fd=new Float32Array(an.frequencyBinCount);
+const sr=ctx.sampleRate,N=an.fftSize;$('#fftinfo').textContent='Risoluzione '+f1(sr/N,2)+' Hz per bin, finestra Blackman di '+f1(N/sr*1000,0)+' ms: FFT più grande = più dettaglio in frequenza ma risposta più lenta.';}
+async function startMic(){
+if(live){lost('Microfono fermato.');say('.mic-msg','Microfono fermato.');return;}
+if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){say('.mic-msg','getUserMedia non disponibile: apri la pagina in Safari tramite HTTPS.','er');return;}
+try{await ensureCtx();stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});}
+catch(e){say('.mic-msg',e.name==='NotAllowedError'?'Permesso negato. Abilitalo in Impostazioni, Safari, Microfono, poi ricarica la pagina.':'Errore microfono: '+e.message,'er');return;}
+const src=ctx.createMediaStreamSource(stream);an=ctx.createAnalyser();an.minDecibels=-120;an.maxDecibels=0;setupBuf();src.connect(an);
+const pr=ctx.createScriptProcessor(4096,1,1),z=ctx.createGain();z.gain.value=0;src.connect(pr);pr.connect(z);z.connect(ctx.destination);
+pr.onaudioprocess=e=>{const d=e.inputBuffer.getChannelData(0);if(rec){rec.push(new Float32Array(d));rec.n+=d.length;if(rec.n>=ctx.sampleRate*60)stopRec();}
+if(meas){for(let i=0;i<d.length;i++){const v=d[i],a=Math.abs(v);meas.ss+=v*v;meas.cs+=v*v;if(a>meas.peak)meas.peak=a;}meas.n+=d.length;meas.cn+=d.length;if(meas.cn>=ctx.sampleRate){meas.sec.push(Math.sqrt(meas.cs/meas.cn));meas.cs=meas.cn=0;}}};
+const tr=stream.getAudioTracks()[0];tr.onended=()=>lost('Flusso del microfono interrotto o perso.');
+const st=tr.getSettings?tr.getSettings():{};$('#a-set').textContent=JSON.stringify(st,null,1)+'\n(valori riportati dal browser; quelli mancanti non sono esposti)';
+$('#a-sr').textContent=ctx.sampleRate+' Hz (contesto)'+(st.sampleRate?', flusso '+st.sampleRate+' Hz':'');
+live=true;say('.mic-msg','Microfono attivo. Elaborazione locale, nulla viene caricato.','ok');$$('.micbtn').forEach(b=>b.textContent='Ferma microfono');requestAnimationFrame(loop);}
+$$('.micbtn').forEach(b=>b.onclick=startMic);
+$('#afft').onchange=()=>{if(live)setupBuf();};$('#aavg').onchange=()=>{if(an)an.smoothingTimeConstant=+$('#aavg').value;};
+
+const hist=[];let lastH=0;
+function loop(t){if(!live)return;an.getFloatTimeDomainData(td);an.getFloatFrequencyData(fd);
+let s=0,p=0;for(let i=0;i<td.length;i++){const v=td[i],a=Math.abs(v);s+=v*v;if(a>p)p=a;}
+const rms=Math.sqrt(s/td.length),r=dB(rms),pk=dB(p),sr=ctx.sampleRate,hz=sr/an.fftSize,lo=+$('#lo').value,hi=+$('#hi').value;
+let T=0,b=0,l=0;for(let k=1;k<fd.length;k++){const pw=Math.pow(10,fd[k]/10),f=k*hz;T+=pw;if(f>=lo&&f<hi)b+=pw;if(f<200)l+=pw;if(meas)meas.acc[k]+=pw;}
+if(meas){meas.fr++;const e=meas.n/sr;say('#mprog','Misura in corso: '+f1(e,0)+' / '+meas.dur+' s'+(toneOn?' (segnale di prova attivo)':''),'wn');if(e>=meas.dur)finishMeas();}
+const status=p>=0.99?'CLIPPING':r<-70?'Silenzio / segnale quasi assente':'OK';
+$('#d-rms').textContent=f1(r)+' dBFS';$('#d-pk').textContent=f1(pk)+' dBFS';$('#d-st').textContent=status;
+if(scr==='ana'){$('#a-rms').textContent=f1(r)+' dBFS';$('#a-pk').textContent=f1(pk)+' dBFS';$('#a-bd').textContent=T?f1(100*b/T)+' %':'n/d';$('#a-lf').textContent=T?f1(100*l/T)+' %':'n/d';$('#a-st').textContent=status;
+chart($('#aw'),[{c:css('--ac'),p:wave(sr)}],{x0:0,x1:1024/sr*1000,y0:-1,y1:1,ys:0.5,t:'Ampiezza (fs) / ms'});
+const sp=[];for(let k=1;k<fd.length&&k*hz<=20000;k++)sp.push([k*hz,Math.max(-120,fd[k])]);
+chart($('#asp'),[{c:css('--ac'),p:sp}],{logx:1,x0:20,x1:Math.min(20000,sr/2),y0:-120,y1:0,t:'Spettro dB rel. / Hz'});}
+else if(scr==='home')chart($('#cw'),[{c:css('--ac'),p:wave(sr)}],{x0:0,x1:1024/sr*1000,y0:-1,y1:1,ys:0.5,t:'Ampiezza (fs) / ms'});
+if(t-lastH>100){lastH=t;hist.push(r);if(hist.length>600)hist.shift();if(scr==='ana')chart($('#ahi'),[{c:css('--wn'),p:hist.map((v,i)=>[(i-hist.length)/10,Math.max(-100,v)])}],{x0:-60,x1:0,y0:-100,y1:0,t:'RMS dBFS / s'});}
+requestAnimationFrame(loop);}
+const wave=sr=>{const a=[];for(let i=0;i<1024;i++)a.push([i/sr*1000,td[i]]);return a;};
+
+/* ---------- Registrazione e riproduzione ---------- */
+function stopRec(){if(!rec)return;const x=new Float32Array(rec.n);let o=0;rec.forEach(c=>{x.set(c,o);o+=c.length;});rec=null;clip={x,sr:ctx.sampleRate,name:'registrazione'};
+$('#rbtn').textContent='Registra (max 60 s)';$('#pbtn').disabled=false;say('#rmsg','Registrati '+f1(x.length/clip.sr)+' s. Resta solo in memoria; usala nel Laboratorio.','ok');}
+$('#rbtn').onclick=()=>{if(!live){say('#rmsg','Attiva prima il microfono.','er');return;}if(rec){stopRec();return;}rec=[];rec.n=0;$('#rbtn').textContent='Ferma registrazione';say('#rmsg','Registrazione in corso…','wn');};
+function stopPlay(){if(ps){try{ps.s.stop();}catch(e){}ps=null;}}
+async function play(x,sr,gain=0.2){try{await ensureCtx();}catch(e){return;}stopPlay();const b=ctx.createBuffer(1,x.length,sr);b.getChannelData(0).set(x);const s=ctx.createBufferSource(),g=ctx.createGain();g.gain.value=gain;s.buffer=b;s.connect(g);g.connect(ctx.destination);s.onended=()=>{ps=null;};s.start();ps={s};}
+$('#pbtn').onclick=()=>clip&&play(clip.x,clip.sr);$('#xbtn').onclick=stopPlay;$('#pbtn').addEventListener('click',()=>$('#xbtn').disabled=false);
+$('#xbtn').disabled=false;
+
+/* ---------- Laboratorio ANR digitale ---------- */
+function fft(re,im){const n=re.length;for(let i=1,j=0;i<n;i++){let b=n>>1;for(;j&b;b>>=1)j^=b;j^=b;if(i<j){[re[i],re[j]]=[re[j],re[i]];[im[i],im[j]]=[im[j],im[i]];}}
+for(let len=2;len<=n;len<<=1){const a=-2*Math.PI/len,wr=Math.cos(a),wi=Math.sin(a);for(let i=0;i<n;i+=len){let cr=1,ci=0;for(let k=0;k<len/2;k++){const u=i+k,v=u+len/2,tr=re[v]*cr-im[v]*ci,ti=re[v]*ci+im[v]*cr;re[v]=re[u]-tr;im[v]=im[u]-ti;re[u]+=tr;im[u]+=ti;const t=cr*wr-ci*wi;ci=cr*wi+ci*wr;cr=t;}}}}
+function psd(x,N=4096){if(x.length<N)return null;const re=new Float64Array(N),im=new Float64Array(N),acc=new Float64Array(N/2),w=new Float64Array(N);for(let i=0;i<N;i++)w[i]=.5-.5*Math.cos(2*Math.PI*i/(N-1));let c=0;
+for(let o=0;o+N<=x.length;o+=N/2){for(let i=0;i<N;i++){re[i]=x[o+i]*w[i];im[i]=0;}fft(re,im);for(let k=0;k<N/2;k++)acc[k]+=re[k]*re[k]+im[k]*im[k];c++;}
+return Array.from(acc,v=>10*Math.log10(v/c/(N*N/4)+1e-14));}
+function transform(x,sr,inv,g,ms){const d=Math.round(ms*sr/1000),y=new Float32Array(x.length),s=(inv?-1:1)*g;for(let i=d;i<x.length;i++)y[i]=s*x[i-d];return y;}
+const rmsOf=a=>{let s=0;for(let i=0;i<a.length;i++)s+=a[i]*a[i];return Math.sqrt(s/Math.max(1,a.length));};
+function labCalc(){if(!lab)return null;const inv=$('#inv').checked,g=+$('#gain').value,ms=+$('#dly').value,y=transform(lab.x,lab.sr,inv,g,ms),r=new Float32Array(y.length);for(let i=0;i<r.length;i++)r[i]=lab.x[i]+y[i];return{y,r,inv,g,ms};}
+function runLab(){$('#gv').textContent=(+$('#gain').value).toFixed(2);$('#dv').textContent=(+$('#dly').value).toFixed(2)+' ms';if(!lab)return;const o=labCalc(),sr=lab.sr,T=lab.x.length/sr;
+const opt={x0:0,x1:T,y0:-1,y1:1,ys:0.5};chart($('#l1'),[{c:css('--ac'),p:dec(lab.x,sr)}],{...opt,t:'Originale (fs) / s'});chart($('#l2'),[{c:css('--wn'),p:dec(o.y,sr)}],{...opt,t:'Trasformato'});chart($('#l3'),[{c:css('--ok'),p:dec(o.r,sr)}],{...opt,t:'Risultante'});
+const a=psd(lab.x),b=psd(o.r);if(a&&b){const h=sr/4096,pa=[],pb=[];for(let k=1;k<a.length;k++){if(k*h>20000)break;pa.push([k*h,a[k]]);pb.push([k*h,b[k]]);}const[y0,y1]=rng([pa,pb]);chart($('#lsp'),[{c:css('--ac'),p:pa},{c:css('--ok'),p:pb}],{logx:1,x0:20,x1:Math.min(20000,sr/2),y0,y1,t:'Spettro prima (blu) e dopo (verde), dB relativi / Hz'});}
+const rx=rmsOf(lab.x),rr=rmsOf(o.r);$('#l-x').textContent=f1(dB(rx))+' dBFS';$('#l-r').textContent=f1(dB(rr))+' dBFS';$('#l-c').textContent=f1(dB(rr/(rx||1e-9)))+' dB (solo digitale)';}
+['#inv','#gain','#dly'].forEach(i=>$(i).oninput=runLab);
+$('#luse').onclick=()=>{if(!clip){say('#lmsg','Nessuna registrazione disponibile: registra nell’Analizzatore o importa un file.','er');return;}lab=clip;$('#lsrc').textContent='Sorgente: '+clip.name+', '+f1(clip.x.length/clip.sr)+' s a '+clip.sr+' Hz.';say('#lmsg','');runLab();};
+$('#lfile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{await ensureCtx();const b=await ctx.decodeAudioData(await f.arrayBuffer());clip={x:new Float32Array(b.getChannelData(0)),sr:b.sampleRate,name:f.name};$('#luse').click();$('#pbtn').disabled=false;}catch(err){say('#lmsg','Impossibile decodificare il file: '+err.message,'er');}};
+$$('[data-p]').forEach(b=>b.onclick=()=>{if(!lab){say('#lmsg','Carica prima un campione.','er');return;}const o=labCalc();play(b.dataset.p==='x'?lab.x:o[b.dataset.p],lab.sr,0.2);});
+$('#lstop').onclick=stopPlay;
+function wav(x,sr){const b=new ArrayBuffer(44+x.length*2),v=new DataView(b),W=(o,s)=>[...s].forEach((c,i)=>v.setUint8(o+i,c.charCodeAt(0)));W(0,'RIFF');v.setUint32(4,36+x.length*2,true);W(8,'WAVEfmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,sr,true);v.setUint32(28,sr*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);W(36,'data');v.setUint32(40,x.length*2,true);for(let i=0;i<x.length;i++)v.setInt16(44+i*2,Math.max(-1,Math.min(1,x[i]))*32767,true);return new Blob([b],{type:'audio/wav'});}
+$('#lwav').onclick=()=>{if(!lab){say('#lmsg','Carica prima un campione.','er');return;}const a=document.createElement('a');a.href=URL.createObjectURL(wav(labCalc().r,lab.sr));a.download='residuo-simulato.wav';a.click();say('#lmsg','Esportato (se Safari non scarica, tieni premuto sul file aperto e scegli «Salva»).','ok');};
+$('#lrep').onclick=()=>{if(!lab){say('#lmsg','Carica prima un campione.','er');return;}const o=labCalc();sessions.unshift({id:Date.now(),t:Date.now(),kind:'sim',src:lab.name,inv:o.inv,g:o.g,ms:o.ms,ratio:dB(rmsOf(o.r)/(rmsOf(lab.x)||1e-9))});persist();say('#lmsg','Aggiunto al report come dato SIMULATO.','ok');};
+$('#ltest').onclick=()=>{const sr=48000,x=new Float32Array(sr);for(let i=0;i<sr;i++)x[i]=0.5*Math.sin(2*Math.PI*440*i/sr);const y=transform(x,sr,true,1,0);let m=0;for(let i=0;i<sr;i++)m=Math.max(m,Math.abs(x[i]+y[i]));say('#lmsg','Sinusoide 440 Hz, segno invertito, guadagno 1, ritardo 0: massimo |x + y| = '+m+(m===0?'. Risultato atteso: zero esatto, nel solo dominio digitale.':'. ATTENZIONE: non è zero.'),m===0?'ok':'er');};
+
+/* ---------- Test audio reale (diagnostica) ---------- */
+async function refreshInfo(){const el=$('#info');if(!ctx){el.innerHTML='<span>Motore audio</span><b>non avviato: tocca «Aggiorna»</b>';return;}
+const N=v=>v===undefined||v===null?'non disponibile':v,rows=[['Frequenza di campionamento',ctx.sampleRate+' Hz'],['AudioContext.state',ctx.state],['baseLatency',typeof ctx.baseLatency==='number'?f1(ctx.baseLatency*1000,2)+' ms':'non disponibile'],['outputLatency',typeof ctx.outputLatency==='number'?f1(ctx.outputLatency*1000,2)+' ms':'non disponibile']];
+let ts='non disponibile';if(ctx.getOutputTimestamp){const o=ctx.getOutputTimestamp();ts='contesto '+f1(o.contextTime,3)+' s, performance '+f1(o.performanceTime,1)+' ms';}rows.push(['Timestamp di uscita',ts],['Selezione uscita (sinkId)','sinkId' in ctx?'supportata':'non disponibile (usa AirPlay di iOS)']);
+let dev='non disponibile';try{const d=(await navigator.mediaDevices.enumerateDevices()).filter(x=>x.kind==='audiooutput');dev=d.length?d.map(x=>x.label||'(senza nome)').join(', '):'non rilevabile da Safari';}catch(e){}rows.push(['Dispositivo di uscita noto',dev]);
+el.innerHTML='';rows.forEach(r=>{const a=document.createElement('span'),b=document.createElement('b');a.textContent=r[0];b.textContent=N(r[1]);el.append(a,b);});}
+$('#tinfo').onclick=async()=>{try{await ensureCtx();}catch(e){say('#tmsg',e.message,'er');}refreshInfo();};
+$('#tf').oninput=()=>$('#tfv').textContent=$('#tf').value+' Hz';$('#vol').oninput=()=>$('#vv').textContent=$('#vol').value+'%';
+async function startTone(){try{await ensureCtx();}catch(e){say('#tmsg',e.message,'er');return;}stopTone();const t=ctx.currentTime,vol=Math.min(+$('#vol').value/100,0.3),g=ctx.createGain();g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(vol,t+0.5);let s,fl=null;
+if($('#ttype').value==='sine'){s=ctx.createOscillator();s.frequency.value=+$('#tf').value;}else{const b=ctx.createBuffer(1,ctx.sampleRate*2,ctx.sampleRate),d=b.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;s=ctx.createBufferSource();s.buffer=b;s.loop=true;fl=ctx.createBiquadFilter();fl.type='lowpass';fl.frequency.value=400;}
+if(fl){s.connect(fl);fl.connect(g);}else s.connect(g);g.connect(ctx.destination);s.start();tn={s,g};toneOn=true;if(meas)meas.tone=true;tt=setTimeout(stopTone,30000);setMode();say('#tmsg','Emissione in corso al '+f1(vol*100,0)+'%. Si ferma da sola dopo 30 s. Nessuna cancellazione attiva.','wn');}
+function stopTone(){if(tn&&ctx){const t=ctx.currentTime;tn.g.gain.cancelScheduledValues(t);tn.g.gain.setValueAtTime(0,t);try{tn.s.stop(t+0.02);}catch(e){}const g=tn.g;setTimeout(()=>{try{g.disconnect();}catch(e){}},100);}tn=null;clearTimeout(tt);if(toneOn){toneOn=false;setMode();say('#tmsg','Audio fermo.');}}
+$('#tstart').onclick=startTone;$('#tstop').onclick=()=>{stopTone();stopPlay();};
+document.addEventListener('visibilitychange',()=>{if(document.hidden){stopTone();stopPlay();if(live)lost('Pagina in background: acquisizione interrotta. Riattiva il microfono.');}});
+
+/* ---------- Report, misure guidate, confronto ---------- */
+function persist(){try{if($('#cons').checked)localStorage.setItem('qb',JSON.stringify(sessions));}catch(e){}renderRep();}
+$('#cons').onchange=()=>{try{if($('#cons').checked)localStorage.setItem('qb',JSON.stringify(sessions));else localStorage.removeItem('qb');}catch(e){}};
+$('#clr').onclick=()=>{sessions=[];try{localStorage.removeItem('qb');}catch(e){}renderRep();say('#cres','Dati cancellati da memoria e da questo dispositivo.','ok');};
+$('#mstart').onclick=async()=>{if(meas)return;if(!live)await startMic();if(!live)return;const dur=+$('#rdur').value;
+if($('#rspk').value==='accesa')say('#mprog','Cassa accesa: il microfono può captare anche la cassa e contaminare la misura.','wn');
+meas={ss:0,n:0,peak:0,cs:0,cn:0,sec:[],acc:new Float64Array(fd.length),fr:0,dur,tone:false};$('#afft').disabled=true;};
+function finishMeas(){const m=meas;meas=null;$('#afft').disabled=false;const sr=ctx.sampleRate,hz=sr/an.fftSize,fm=Math.min(12000,sr/2),bins=[];
+for(let i=0;i<64;i++){const a=20*Math.pow(fm/20,i/64),b=20*Math.pow(fm/20,(i+1)/64);let p=0;for(let k=1;k<m.acc.length;k++){const f=k*hz;if(f>=a&&f<b)p+=m.acc[k]/m.fr;}bins.push([Math.sqrt(a*b),10*Math.log10(p+1e-14)]);}
+const lo=+$('#lo').value,hi=+$('#hi').value;let T=0,B=0;for(let k=1;k<m.acc.length;k++){T+=m.acc[k];const f=k*hz;if(f>=lo&&f<hi)B+=m.acc[k];}
+const s=m.sec.map(dB).sort((a,b)=>a-b),q=p=>s.length?s[Math.min(s.length-1,Math.floor(p*s.length))]:NaN,st=stream.getAudioTracks()[0].getSettings();
+sessions.unshift({id:Date.now(),t:Date.now(),kind:'mis',pos:$('#rpos').value,win:$('#rwin').value,spk:$('#rspk').value,um:$('#rmode').value,dur:m.n/sr,rms:dB(Math.sqrt(m.ss/m.n)),peak:dB(m.peak),med:q(.5),p10:q(.1),p95:q(.95),bins,lo,hi,share:T?100*B/T:NaN,sr,fft:an.fftSize,tone:m.tone,note:$('#rnote').value,set:st});
+say('#mprog','Misura completata e aggiunta alla cronologia.','ok');persist();}
+const el=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!==undefined)e.textContent=x;return e;};
+function renderRep(){const L=$('#list');L.innerHTML='';if(!sessions.length)L.append(el('p','msg','Nessuna sessione. Avvia una misura guidata o registra un risultato dal Laboratorio.'));
+const opts=sessions.map(s=>'<option value="'+s.id+'">'+new Date(s.t).toLocaleString('it-IT')+(s.kind==='sim'?' (simulato)':'')+'</option>').join('');['#ca','#cb'].forEach((i,n)=>{const c=$(i),v=c.value;c.innerHTML=opts;if(v)c.value=v;else if(sessions[n])c.selectedIndex=n;});
+sessions.forEach(s=>{const d=el('div','item'),h=el('div','r');h.style.margin='0';h.append(el('b','',new Date(s.t).toLocaleString('it-IT')));
+if(s.kind==='mis'){h.append(el('span','badge mis','misurato'),el('span','badge est','stima'));d.append(h,el('div','',s.pos+', finestra '+s.win+', cassa '+s.spk+'. '+s.um+'. Durata '+f1(s.dur,0)+' s.'),
+el('div','','RMS digitale '+f1(s.rms)+' dBFS, picco '+f1(s.peak)+' dBFS (misurati). Banda '+s.lo+'–'+s.hi+' Hz: '+f1(s.share)+' % dell’energia (stima). FFT '+s.fft+', '+s.sr+' Hz.'));
+if(s.spk==='accesa'||s.tone)d.append(el('div','msg wn','Possibile contaminazione: il microfono può aver captato il segnale emesso.'));if(s.note)d.append(el('div','msg','Traffico: '+s.note));}
+else{h.append(el('span','badge sim','simulato'));d.append(h,el('div','','Sorgente '+s.src+', inversione '+(s.inv?'sì':'no')+', guadagno '+f1(s.g,2)+', ritardo '+f1(s.ms,2)+' ms. Residuo teorico '+f1(s.ratio)+' dB, solo digitale: non è una riduzione acustica reale.'));}
+L.append(d);});}
+$('#cmp').onclick=()=>{const a=sessions.find(s=>s.id==$('#ca').value),b=sessions.find(s=>s.id==$('#cb').value),o=[];if(!a||!b||a===b){say('#cres','Scegli due sessioni diverse.','er');return;}
+if(a.kind!=='mis'||b.kind!=='mis'){say('#cres','Confronto bloccato: include dati simulati. Nessun guadagno ANR viene calcolato da simulazioni.','er');return;}
+const dd=Math.abs(a.dur-b.dur)/Math.max(a.dur,b.dur);if(dd>0.2)o.push('Durate molto diverse ('+f1(a.dur,0)+' s e '+f1(b.dur,0)+' s).');
+if(Math.abs(a.med-b.med)>6)o.push('Il livello ambientale tipico (mediana) differisce di '+f1(Math.abs(a.med-b.med))+' dB: il confronto è poco significativo.');
+if(a.p95-a.p10>20||b.p95-b.p10>20)o.push('Traffico molto variabile in una delle sessioni (eventi isolati dominano la misura).');
+if(a.pos!==b.pos||a.win!==b.win)o.push('Posizione o finestra diverse tra le sessioni.');
+if([a,b].some(s=>s.spk==='accesa'||s.tone))o.push('Con la cassa accesa il microfono capta anche la cassa: risultato contaminato.');
+say('#cres','Differenza di RMS digitale (B meno A): '+f1(b.rms-a.rms)+' dB; differenza della mediana: '+f1(b.med-a.med)+' dB. Sono misure digitali relative, non dB SPL. Non è un guadagno ANR: una diminuzione può dipendere dal traffico o dalle condizioni. '+o.join(' '),o.length?'wn':'');
+const[y0,y1]=rng([a.bins,b.bins]);chart($('#csp'),[{c:css('--ac'),p:a.bins},{c:css('--wn'),p:b.bins}],{logx:1,x0:20,x1:12000,y0,y1,t:'A (blu) e B (arancio), dB relativi / Hz'});};
+
+/* ---------- Avvio ---------- */
+try{const s=localStorage.getItem('qb');if(s){sessions=JSON.parse(s);$('#cons').checked=true;}}catch(e){}
+renderRep();setMode();
+if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)say('.mic-msg','Microfono non disponibile: serve una pagina HTTPS in Safari. Il Laboratorio con file importati funziona comunque.','er');
+</script>
+</body>
+</html>
