@@ -159,7 +159,7 @@ const rng=ss=>{let m=-200;ss.forEach(s=>s.forEach(q=>{if(q[1]>m)m=q[1]}));const 
 /* ---------- Motore audio e microfono ---------- */
 async function ensureCtx(){if(!ctx){const AC=window.AudioContext||window.webkitAudioContext;if(!AC)throw new Error('Web Audio API non supportata da questo browser.');ctx=new AC();
 ctx.onstatechange=()=>{if(ctx.state!=='running'){stopTone();stopPlay();if(ctx.state==='closed'){if(live)lost('Il motore audio è stato chiuso. Tocca di nuovo «Attiva microfono».');}else if(live){say('.mic-msg','Motore audio in stato «'+ctx.state+'», provo a riprendere…','wn');ctx.resume().catch(()=>{});}}else if(live)say('.mic-msg','Microfono attivo. Elaborazione locale, nulla viene caricato.','ok');refreshInfo();};}
-if(ctx.state!=='running')await ctx.resume();}
+if(ctx.state!=='running')await Promise.race([ctx.resume().catch(()=>{}),new Promise(r=>setTimeout(r,1500))]);}
 function lost(msg){live=false;rec=null;if(meas){meas=null;$('#afft').disabled=false;say('#mprog','Misura annullata: '+msg,'er');}
 if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;say('.mic-msg',msg,'er');$$('.micbtn').forEach(b=>b.textContent='Attiva microfono');$('#rbtn').textContent='Registra (max 60 s)';}
 function setupBuf(){an.fftSize=+$('#afft').value;an.smoothingTimeConstant=+$('#aavg').value;td=new Float32Array(an.fftSize);fd=new Float32Array(an.frequencyBinCount);
@@ -167,7 +167,7 @@ const sr=ctx.sampleRate,N=an.fftSize;$('#fftinfo').textContent='Risoluzione '+f1
 async function startMic(){
 if(live){lost('Microfono fermato.');say('.mic-msg','Microfono fermato.');return;}
 if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){say('.mic-msg','getUserMedia non disponibile: apri la pagina in Safari tramite HTTPS.','er');return;}
-try{await ensureCtx();stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});}
+try{if(navigator.audioSession)navigator.audioSession.type='auto';}catch(e){}try{await ensureCtx();stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});}
 catch(e){say('.mic-msg',e.name==='NotAllowedError'?'Permesso negato. Abilitalo in Impostazioni, Safari, Microfono, poi ricarica la pagina.':'Errore microfono: '+e.message,'er');return;}
 try{await ctx.resume();}catch(e){}const src=ctx.createMediaStreamSource(stream);an=ctx.createAnalyser();an.minDecibels=-120;an.maxDecibels=0;setupBuf();src.connect(an);
 const pr=ctx.createScriptProcessor(4096,1,1),z=ctx.createGain();z.gain.value=0;src.connect(pr);pr.connect(z);z.connect(ctx.destination);
@@ -202,8 +202,15 @@ function stopRec(){if(!rec)return;const x=new Float32Array(rec.n);let o=0;rec.fo
 $('#rbtn').textContent='Registra (max 60 s)';$('#pbtn').disabled=false;say('#rmsg','Registrati '+f1(x.length/clip.sr)+' s. Resta solo in memoria; usala nel Laboratorio.','ok');}
 $('#rbtn').onclick=()=>{if(!live){say('#rmsg','Attiva prima il microfono.','er');return;}if(rec){stopRec();return;}rec=[];rec.n=0;$('#rbtn').textContent='Ferma registrazione';say('#rmsg','Registrazione in corso…','wn');setTimeout(()=>{if(rec&&rec.n===0){rec=null;$('#rbtn').textContent='Registra (max 60 s)';say('#rmsg','Nessun campione ricevuto dal microfono (stato audio: '+ctx.state+', blocchi elaborati: '+cbN+'). Ferma il microfono, ricarica la pagina e riprova.','er');}},2000);};
 function stopPlay(){if(ps){try{ps.s.stop();}catch(e){}ps=null;}}
-async function play(x,sr,gain=0.2){try{await ensureCtx();}catch(e){return;}stopPlay();const b=ctx.createBuffer(1,x.length,sr);b.getChannelData(0).set(x);const s=ctx.createBufferSource(),g=ctx.createGain();g.gain.value=gain;s.buffer=b;s.connect(g);g.connect(ctx.destination);s.onended=()=>{ps=null;};s.start();ps={s};}
-$('#pbtn').onclick=()=>clip&&play(clip.x,clip.sr);$('#xbtn').onclick=stopPlay;$('#pbtn').addEventListener('click',()=>$('#xbtn').disabled=false);
+let sa;function unlock(){try{if(navigator.audioSession)navigator.audioSession.type='playback';}catch(e){}try{if(!sa)sa=new Audio(URL.createObjectURL(wav(new Float32Array(4410),44100)));sa.play().catch(()=>{});}catch(e){}}
+const peakOf=a=>{let p=0;for(let i=0;i<a.length;i++){const v=Math.abs(a[i]);if(v>p)p=v;}return p;};
+async function play(x,sr,gain,sel,label){
+if(live)lost('Microfono fermato per ascoltare l’audio: con il microfono attivo iOS abbassa l’uscita.');
+unlock();try{await ensureCtx();}catch(e){say(sel,'Motore audio non disponibile: '+e.message,'er');return;}
+if(ctx.state!=='running'){say(sel,'Il motore audio non parte (stato «'+ctx.state+'»). Controlla che il telefono non sia in una chiamata e ritocca il pulsante.','er');return;}
+stopPlay();const b=ctx.createBuffer(1,x.length,sr);b.getChannelData(0).set(x);const s=ctx.createBufferSource(),g=ctx.createGain();g.gain.value=gain;s.buffer=b;s.connect(g);g.connect(ctx.destination);
+s.onended=()=>{if(ps&&ps.s===s){ps=null;say(sel,'Riproduzione terminata.');}};s.start();ps={s};say(sel,label+' (volume limitato; se non senti nulla controlla volume, tasto silenzioso e uscita audio).','ok');}
+$('#pbtn').onclick=()=>{if(!clip)return;play(clip.x,clip.sr,Math.min(8,0.25/Math.max(peakOf(clip.x),1e-4)),'#rmsg','Riproduzione della registrazione');};$('#xbtn').onclick=()=>{stopPlay();say('#rmsg','Audio fermato.');};
 $('#xbtn').disabled=false;
 
 /* ---------- Laboratorio ANR digitale ---------- */
@@ -227,8 +234,10 @@ $('#lfile').onchange=async e=>{const f=e.target.files[0];if(!f)return;say('#lmsg
 try{const b=await decodeAudio(await f.arrayBuffer());clip={x:new Float32Array(b.getChannelData(0)),sr:b.sampleRate,name:f.name};$('#luse').click();$('#pbtn').disabled=false;say('#lmsg','File caricato: '+f.name+', '+f1(clip.x.length/clip.sr)+' s.','ok');}
 catch(err){say('#lmsg','Impossibile caricare il file ('+((err&&err.message)||'formato non supportato')+'). Prova con WAV, MP3 o M4A.','er');}
 e.target.value='';};
-$$('[data-p]').forEach(b=>b.onclick=()=>{if(!lab){say('#lmsg','Carica prima un campione.','er');return;}const o=labCalc();play(b.dataset.p==='x'?lab.x:o[b.dataset.p],lab.sr,0.2);});
-$('#lstop').onclick=stopPlay;
+$$('[data-p]').forEach(b=>b.onclick=()=>{if(!lab){say('#lmsg','Carica prima un campione.','er');return;}const o=labCalc(),k=b.dataset.p,sig=k==='x'?lab.x:o[k],nm={x:'originale',y:'trasformato',r:'risultante'}[k];
+if(peakOf(sig)<1e-6){say('#lmsg','Il segnale «'+nm+'» è silenzio: con inversione, guadagno 1 e ritardo 0 la cancellazione digitale è perfetta. Non è un errore. Cambia guadagno o ritardo per sentire il residuo.','wn');return;}
+play(sig,lab.sr,Math.min(8,0.25/Math.max(peakOf(lab.x),1e-4)),'#lmsg','Riproduzione: '+nm);});
+$('#lstop').onclick=()=>{stopPlay();say('#lmsg','Audio fermato.');};
 function wav(x,sr){const b=new ArrayBuffer(44+x.length*2),v=new DataView(b),W=(o,s)=>[...s].forEach((c,i)=>v.setUint8(o+i,c.charCodeAt(0)));W(0,'RIFF');v.setUint32(4,36+x.length*2,true);W(8,'WAVEfmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,sr,true);v.setUint32(28,sr*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);W(36,'data');v.setUint32(40,x.length*2,true);for(let i=0;i<x.length;i++)v.setInt16(44+i*2,Math.max(-1,Math.min(1,x[i]))*32767,true);return new Blob([b],{type:'audio/wav'});}
 $('#lwav').onclick=()=>{if(!lab){say('#lmsg','Carica prima un campione.','er');return;}const a=document.createElement('a');a.href=URL.createObjectURL(wav(labCalc().r,lab.sr));a.download='residuo-simulato.wav';a.click();say('#lmsg','Esportato (se Safari non scarica, tieni premuto sul file aperto e scegli «Salva»).','ok');};
 $('#lrep').onclick=()=>{if(!lab){say('#lmsg','Carica prima un campione.','er');return;}const o=labCalc();sessions.unshift({id:Date.now(),t:Date.now(),kind:'sim',src:lab.name,inv:o.inv,g:o.g,ms:o.ms,ratio:dB(rmsOf(o.r)/(rmsOf(lab.x)||1e-9))});persist();say('#lmsg','Aggiunto al report come dato SIMULATO.','ok');};
@@ -242,7 +251,7 @@ let dev='non disponibile';try{const d=(await navigator.mediaDevices.enumerateDev
 el.innerHTML='';rows.forEach(r=>{const a=document.createElement('span'),b=document.createElement('b');a.textContent=r[0];b.textContent=N(r[1]);el.append(a,b);});}
 $('#tinfo').onclick=async()=>{try{await ensureCtx();}catch(e){say('#tmsg',e.message,'er');}refreshInfo();};
 $('#tf').oninput=()=>$('#tfv').textContent=$('#tf').value+' Hz';$('#vol').oninput=()=>$('#vv').textContent=$('#vol').value+'%';
-async function startTone(){try{await ensureCtx();}catch(e){say('#tmsg',e.message,'er');return;}stopTone();const t=ctx.currentTime,vol=Math.min(+$('#vol').value/100,0.3),g=ctx.createGain();g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(vol,t+0.5);let s,fl=null;
+async function startTone(){if(!live)unlock();try{await ensureCtx();}catch(e){say('#tmsg',e.message,'er');return;}stopTone();const t=ctx.currentTime,vol=Math.min(+$('#vol').value/100,0.3),g=ctx.createGain();g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(vol,t+0.5);let s,fl=null;
 if($('#ttype').value==='sine'){s=ctx.createOscillator();s.frequency.value=+$('#tf').value;}else{const b=ctx.createBuffer(1,ctx.sampleRate*2,ctx.sampleRate),d=b.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;s=ctx.createBufferSource();s.buffer=b;s.loop=true;fl=ctx.createBiquadFilter();fl.type='lowpass';fl.frequency.value=400;}
 if(fl){s.connect(fl);fl.connect(g);}else s.connect(g);g.connect(ctx.destination);s.start();tn={s,g};toneOn=true;if(meas)meas.tone=true;tt=setTimeout(stopTone,30000);setMode();say('#tmsg','Emissione in corso al '+f1(vol*100,0)+'%. Si ferma da sola dopo 30 s. Nessuna cancellazione attiva.','wn');}
 function stopTone(){if(tn&&ctx){const t=ctx.currentTime;tn.g.gain.cancelScheduledValues(t);tn.g.gain.setValueAtTime(0,t);try{tn.s.stop(t+0.02);}catch(e){}const g=tn.g;setTimeout(()=>{try{g.disconnect();}catch(e){}},100);}tn=null;clearTimeout(tt);if(toneOn){toneOn=false;setMode();say('#tmsg','Audio fermo.');}}
