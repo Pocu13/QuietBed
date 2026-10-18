@@ -110,7 +110,7 @@ label{font-size:14px;color:var(--mu);display:block}
 <label for="anc-vol">Volume massimo di uscita: <b id="anc-vv">10%</b> (limite 25%)</label><input id="anc-vol" type="range" min="2" max="25" value="10">
 <button class="big" id="anc-go">Avvia taratura e cancellazione</button>
 <button id="anc-tg" style="width:100%" disabled>Spegni la cancellazione (per confronto)</button>
-<div class="kv"><span>Stato</span><b id="anc-st">fermo</b><span>Tono senza cancellazione</span><b id="anc-b">n/d</b><span>Tono ora</span><b id="anc-n">n/d</b><span>Variazione misurata (negativa = tono più basso)</span><b id="anc-r">n/d</b><span>Percorso cassa → microfono</span><b id="anc-h">n/d</b></div>
+<div class="kv"><span>Tono rilevato ora (indicativo, anche prima di avviare)</span><b id="anc-live">n/d</b><span>Diagnostica audio</span><b id="anc-dg">n/d</b><span>Stato</span><b id="anc-st">fermo</b><span>Tono senza cancellazione</span><b id="anc-b">n/d</b><span>Tono ora</span><b id="anc-n">n/d</b><span>Variazione misurata (negativa = tono più basso)</span><b id="anc-r">n/d</b><span>Percorso cassa → microfono</span><b id="anc-h">n/d</b></div>
 <canvas id="anc-ch"></canvas>
 <p class="msg">Grafico: livello del tono rilevato dal microfono, in dBFS, nel tempo (s). Misura relativa nel punto del microfono: non prova una riduzione altrove nella stanza.</p>
 <p class="msg" id="anc-msg"></p>
@@ -195,7 +195,8 @@ function loop(t){if(!live)return;an.getFloatTimeDomainData(td);an.getFloatFreque
 let s=0,p=0;for(let i=0;i<td.length;i++){const v=td[i],a=Math.abs(v);s+=v*v;if(a>p)p=a;}
 const rms=Math.sqrt(s/td.length),r=dB(rms),pk=dB(p),sr=ctx.sampleRate,hz=sr/an.fftSize,lo=+$('#lo').value,hi=+$('#hi').value;
 let T=0,b=0,l=0;for(let k=1;k<fd.length;k++){const pw=Math.pow(10,fd[k]/10),f=k*hz;T+=pw;if(f>=lo&&f<hi)b+=pw;if(f<200)l+=pw;if(meas)meas.acc[k]+=pw;}
-if(rec&&rec.n)say('#rmsg','Registrazione in corso: '+f1(rec.n/sr,1)+' s','wn');if(meas){meas.fr++;const e=meas.n/sr;say('#mprog','Misura in corso: '+f1(e,0)+' / '+meas.dur+' s'+(toneOn?' (segnale di prova attivo)':''),'wn');if(e>=meas.dur)finishMeas();}
+if(rec&&rec.n)say('#rmsg','Registrazione in corso: '+f1(rec.n/sr,1)+' s','wn');if(scr==='test'){const k0=Math.round(+$('#anc-f').value/hz);let mx=-200;for(let k=Math.max(1,k0-1);k<=k0+1&&k<fd.length;k++)if(fd[k]>mx)mx=fd[k];$('#anc-live').textContent=f1(mx)+' dBFS';$('#anc-dg').textContent='stato '+ctx.state+', blocchi audio '+cbN+', fase '+(anc.on?anc.st:'ferma');}
+if(meas){meas.fr++;const e=meas.n/sr;say('#mprog','Misura in corso: '+f1(e,0)+' / '+meas.dur+' s'+(toneOn?' (segnale di prova attivo)':''),'wn');if(e>=meas.dur)finishMeas();}
 const status=p>=0.99?'CLIPPING':r<-70?'Silenzio / segnale quasi assente':'OK';
 $('#d-rms').textContent=f1(r)+' dBFS';$('#d-pk').textContent=f1(pk)+' dBFS';$('#d-st').textContent=status;
 if(scr==='ana'){$('#a-rms').textContent=f1(r)+' dBFS';$('#a-pk').textContent=f1(pk)+' dBFS';$('#a-bd').textContent=T?f1(100*b/T)+' %':'n/d';$('#a-lf').textContent=T?f1(100*l/T)+' %':'n/d';$('#a-st').textContent=status;
@@ -272,9 +273,9 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden){stopTone()
 let anc={on:false},zg;
 function ancInit(f,sr,amax){return{on:true,f,w:2*Math.PI*f/sr,ph:0,I:0,Q:0,k:0,N:Math.round(sr*0.5),st:'b0',u:[0,0],d0:null,H:null,amax,bad:0,mute:false,hist:[]};}
 function ancBlock(d,o){const a=anc;let mu=a.mute?[0,0]:a.u;for(let i=0;i<d.length;i++){const c=Math.cos(a.ph),s=Math.sin(a.ph);a.I+=d[i]*c;a.Q-=d[i]*s;o[i]=mu[0]*c-mu[1]*s;a.ph+=a.w;if(a.ph>6.283185307179586)a.ph-=6.283185307179586;
-if(++a.k>=a.N){ancStep(2*a.I/a.N,2*a.Q/a.N);a.I=a.Q=0;a.k=0;if(!anc.on){o.fill(0,i+1);return;}mu=a.mute?[0,0]:a.u;}}}
+if(++a.k>=a.N){try{ancStep(2*a.I/a.N,2*a.Q/a.N);}catch(e){ancStop('Errore interno: '+e.message,true);}a.I=a.Q=0;a.k=0;if(!anc.on){o.fill(0,i+1);return;}mu=a.mute?[0,0]:a.u;}}}
 function ancStep(cr,ci){const a=anc,m=Math.hypot(cr,ci),lv=dB(m/Math.SQRT2);
-if(a.st==='b0'){a.st='b1';return;}
+if(a.st==='b0'){a.st='b1';ancUi(lv,'Misuro il tono senza cancellazione…');return;}
 if(a.st==='b1'){a.d0=[cr,ci];if(m<0.002){ancStop('Non rilevo il tono a '+a.f+' Hz. Avvia il file sull’altro telefono, a volume medio e vicino a questo iPhone, e controlla la frequenza.',true);return;}
 a.P=Math.min(0.08,a.amax/2);a.u=[a.P,0];a.st='p0';ancUi(lv,'Stimo il percorso cassa → microfono…');return;}
 if(a.st==='p0'){a.st='p1';return;}
@@ -289,7 +290,7 @@ const lo=Math.min(...a.hist),hi=Math.max(...a.hist);chart($('#anc-ch'),[{c:css('
 function ancStop(msg,err){if(!anc.on)return;anc={on:false};if(zg)zg.gain.value=0;toneOn=false;setMode();$('#anc-go').textContent='Avvia taratura e cancellazione';$('#anc-tg').disabled=true;$('#anc-tg').textContent='Spegni la cancellazione (per confronto)';$('#anc-st').textContent='fermo';say('#anc-msg',msg||'Cancellazione fermata.',err?'er':'');}
 $('#anc-vol').oninput=()=>$('#anc-vv').textContent=$('#anc-vol').value+'%';
 $('#anc-go').onclick=async()=>{if(anc.on){ancStop();return;}if(!live)await startMic();if(!live)return;const f=+$('#anc-f').value;if(!(f>=50&&f<=1000)){say('#anc-msg','Frequenza non valida (50–1000 Hz).','er');return;}
-stopTone();stopPlay();anc=ancInit(f,ctx.sampleRate,Math.min(+$('#anc-vol').value/100,0.25));zg.gain.value=1;toneOn=true;if(meas)meas.tone=true;setMode();$('#anc-go').textContent='STOP cancellazione';$('#anc-tg').disabled=false;$('#anc-st').textContent='Misuro il tono senza cancellazione…';$('#anc-r').textContent='n/d';say('#anc-msg','Sperimentale: vale solo vicino al microfono di questo iPhone. Premi STOP per fermare.','wn');};
+stopTone();stopPlay();anc=ancInit(f,ctx.sampleRate,Math.min(+$('#anc-vol').value/100,0.25));zg.gain.value=1;toneOn=true;if(meas)meas.tone=true;setMode();$('#anc-go').textContent='STOP cancellazione';$('#anc-tg').disabled=false;$('#anc-st').textContent='Avvio: attendo i dati del microfono…';$('#anc-r').textContent='n/d';setTimeout(()=>{if(anc.on&&anc.k===0&&anc.st==='b0')ancStop('Il processore audio non riceve dati dal microfono (stato «'+ctx.state+'», blocchi '+cbN+'). Ferma il microfono, ricarica la pagina e riprova.',true);},3000);say('#anc-msg','Sperimentale: vale solo vicino al microfono di questo iPhone. Premi STOP per fermare.','wn');};
 $('#anc-tg').onclick=()=>{if(!anc.on||anc.st!=='run')return;anc.mute=!anc.mute;$('#anc-tg').textContent=anc.mute?'Riaccendi la cancellazione':'Spegni la cancellazione (per confronto)';};
 
 /* ---------- Report, misure guidate, confronto ---------- */
